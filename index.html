@@ -360,7 +360,7 @@ async function generateRecipes(ingredients) {
     const payload = {
         contents: [{ parts: [{ text: userPrompt }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        config: {
+        generationConfig: {
             responseMimeType: "application/json",
             responseSchema: recipeSchema
         }
