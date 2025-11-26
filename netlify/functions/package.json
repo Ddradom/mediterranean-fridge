@@ -1,0 +1,12 @@
+{
+  "name": "generate-recipe-function",
+  "version": "1.0.0",
+  "description": "Securely calls Gemini API via Netlify Function.",
+  "main": "generate-recipe.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
