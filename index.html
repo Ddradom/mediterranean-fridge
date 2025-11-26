@@ -141,7 +141,8 @@ const USE_API_SIMULATION = false;
 // =========================================================================
 
 // --- API Configuration ---
-const apiKey = ""; 
+// !!! ACTION REQUIRED: PASTE YOUR GEMINI API KEY HERE TO MAKE THE APP WORK !!!
+const apiKey = "AIzaSyCb6MOGXRT81yOahVpCkbyYaKg4YtWeGXw"; 
 const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
 
 // --- JSON Schema for Structured Output (UPDATED to match model's detailed output) ---
@@ -221,9 +222,12 @@ function escapeHtml(str) {
  * Executes the API call with exponential backoff.
  */
 async function fetchWithBackoff(payload, maxRetries = 5) {
+    // If running live, append API key to the URL
+    const url = USE_API_SIMULATION ? apiUrl : `${apiUrl}?key=${apiKey}`;
+
     for (let i = 0; i < maxRetries; i++) {
         try {
-            const response = await fetch(apiUrl, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -343,6 +347,11 @@ async function generateRecipes(ingredients) {
         const recipes = getSimulatedRecipes(ingredients);
         console.log("Simulation finished. Recipes:", recipes);
         return recipes;
+    }
+    
+    // Check for API Key presence when in live mode
+    if (!apiKey) {
+        throw new Error("API Key is missing. Please enter your Gemini API Key in the 'apiKey' variable within the script.");
     }
 
     const userPrompt = `Create 3 to 4 distinct recipes for Mediterranean dishes using primarily these ingredients: ${ingredients}. Focus on variety (e.g., one salad, one cooked dish, one dip).`;
@@ -500,6 +509,14 @@ findBtn.addEventListener('click', async () => {
     resultsEl.innerHTML = '';
     errorEl.classList.add('hidden');
     noResultsEl.classList.add('hidden');
+    
+    // Display API Key error immediately if missing and not in simulation
+    if (!USE_API_SIMULATION && (!apiKey || apiKey === "")) {
+        errorEl.textContent = "CRITICAL ERROR: Please provide your Gemini API Key in the script.";
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
 
     if (ingredients.length < 5) {
         noResultsEl.textContent = "Please enter a list of ingredients (e.g., 'chicken, lemon, spinach').";
