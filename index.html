@@ -1,300 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>The Mediterranean Fridge AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --color-primary: #10B981; }
+    body { 
+      font-family: 'Inter', sans-serif; 
+      background-color: #f7f9fb; 
+      /* Subtle texture background for depth */
+      background-image: linear-gradient(135deg, rgba(255,255,255,.2) 0%, rgba(240, 240, 240, .2) 100%);
+      min-height: 100vh; 
+    }
+    .recipe-card { 
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
+      border: 1px solid #e5e7eb;
+    }
+    .main-button {
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4);
+      transition: all 0.2s ease-in-out;
+    }
+    .main-button:hover {
+      background: linear-gradient(135deg, #059669 0%, #10B981 100%);
+      box-shadow: 0 6px 15px rgba(16, 185, 129, 0.6);
+      transform: translateY(-1px);
+    }
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #10B981;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .result-container {
+      min-height: 400px;
+    }
+    .simulation-badge {
+        position: absolute;
+        top: -16px;
+        right: -16px;
+        transform: rotate(15deg);
+        background-color: #f59e0b;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="max-w-4xl mx-auto p-6 md:p-10">
+    <header class="text-center mb-10">
+      <h1 class="text-6xl font-extrabold text-gray-800 mb-2">
+        <span class="text-green-600">The</span> <span class="text-blue-600">Mediterranean</span> AI Chef
+      </h1>
+      <p class="text-xl text-gray-500 font-light italic">
+        Powered by Gemini: Crafting healthy meals from your fridge.
+      </p>
+    </header>
+
+    <section class="bg-white p-6 rounded-2xl shadow-xl border-t-8 border-green-500 mb-8 relative">
+      <h2 class="text-2xl font-bold text-gray-700 mb-4">What's in your fridge?</h2>
+      <textarea id="ingredients-input" rows="3"
+        class="w-full p-4 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-green-500 transition duration-150 text-base resize-none"
+        placeholder="e.g., crab, couscous, olives, tomatoes, basil"></textarea>
+
+      <div class="flex gap-3 mt-4">
+        <button id="find-btn" class="main-button text-white py-3 rounded-lg font-semibold transition duration-150 flex items-center justify-center flex-1">
+          <span id="find-btn-text">Generate Recipe with Gemini</span>
+          <div id="loader" class="loader ml-3 hidden"></div>
+        </button>
+        <button id="clear-btn" class="px-6 py-3 rounded-lg border border-gray-300 bg-gray-100 hover:bg-gray-200 transition duration-150 font-medium">Clear</button>
+      </div>
+
+      <p id="hint" class="mt-3 text-sm text-gray-500">
+        Tip: Include staples like olive oil, salt, and pepper for complete instructions.
+      </p>
+       <div id="mode-indicator" class="simulation-badge hidden">SIMULATION MODE ACTIVE</div>
+    </section>
+
+    <section id="results-section" class="result-container">
+      <div id="results" class="hidden recipe-card bg-white p-8 rounded-2xl relative">
+        <h2 id="recipe-name" class="text-3xl font-extrabold text-gray-800 mb-6 border-b-2 border-gray-100 pb-3"></h2>
+        
+        <!-- Ingredients Section -->
+        <div class="mb-8">
+          <h3 class="text-2xl font-bold text-green-700 mb-4 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-green-500"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M4 14v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1"/></svg>
+            Ingredients
+          </h3>
+          <ul id="ingredients-list" class="list-none space-y-3 text-gray-700 text-lg">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+
+        <!-- Steps Section -->
+        <div>
+          <h3 class="text-2xl font-bold text-blue-700 mb-4 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-blue-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6m-8 7h4m-4 4h4"/></svg>
+            Instructions
+          </h3>
+          <ol id="steps-list" class="list-decimal list-inside space-y-4 text-gray-700 text-base pl-4">
+            <!-- Populated by JS -->
+          </ol>
+        </div>
+
+      </div>
+      <p id="error-message" class="text-center text-red-600 mt-6 hidden font-semibold bg-red-100 p-4 rounded-lg border border-red-300 shadow-md"></p>
+    </section>
+
+    <footer class="mt-12 text-sm text-gray-500 text-center">
+      <p>&copy; 2025 AI Recipe Generator. Always check cooking safety guidelines.</p>
+    </footer>
+  </div>
+
 <script>
-/* ============================
-    SIMULATION: Expanded & Diverse Recipe Database
-    ============================ */
+// =========================================================================
+// CRITICAL FLAG: Set this to TRUE for guaranteed functional testing.
+// If set to TRUE, the app bypasses the network and loads a simulated recipe.
+const USE_API_SIMULATION = true; 
+// =========================================================================
+
+// --- API Configuration ---
+const apiKey = ""; 
+const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+
+// --- JSON Schema for Structured Output ---
+const recipeSchema = {
+    type: "OBJECT",
+    properties: {
+        "name": { "type": "STRING", "description": "A creative, unique name for the dish." },
+        "ingredients": {
+            "type": "ARRAY",
+            "description": "List of required ingredients with quantities.",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "item": { "type": "STRING", "description": "Name of the ingredient." },
+                    "qty": { "type": "STRING", "description": "The quantity (e.g., '1 cup', '2 tbsp')." },
+                    "note": { "type": "STRING", "description": "Preparation note (e.g., 'chopped', 'drained')." }
+                },
+                "required": ["item", "qty"]
+            }
+        },
+        "steps": {
+            "type": "ARRAY",
+            "description": "Step-by-step cooking instructions.",
+            "items": { "type": "STRING" }
+        }
+    },
+    required: ["name", "ingredients", "steps"]
+};
+
+// --- DOM Elements ---
+const inputEl = document.getElementById('ingredients-input');
+const findBtn = document.getElementById('find-btn');
+const clearBtn = document.getElementById('clear-btn');
+const loaderEl = document.getElementById('loader');
+const findBtnText = document.getElementById('find-btn-text');
+const resultsEl = document.getElementById('results');
+const errorEl = document.getElementById('error-message');
+const recipeNameEl = document.getElementById('recipe-name');
+const ingredientsListEl = document.getElementById('ingredients-list');
+const stepsListEl = document.getElementById('steps-list');
+const modeIndicator = document.getElementById('mode-indicator');
+
+// Initialize indicator visibility
+if (USE_API_SIMULATION) {
+    modeIndicator.classList.remove('hidden');
+} else {
+    modeIndicator.classList.add('hidden');
+}
+
+
+// --- Utility Functions ---
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"'`]/g, (s) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;', '`':'&#96;' })[s]);
+}
 
 /**
- * **SIMULATED** function to generate one custom recipe suggestion 
- * and return the full list of available recipes.
- * @param {string[]} fridgeItems - List of ingredients from the input.
- * @returns {Promise<Object>} An object containing the full recipe list and a suggested new recipe.
+ * Executes the API call with exponential backoff.
  */
-async function generateRecipesWithGemini(fridgeItems) {
-    // Simulate network latency
-    await new Promise(resolve => setTimeout(resolve, 1500)); 
+async function fetchWithBackoff(payload, maxRetries = 5) {
+    // This function remains for API compatibility but is bypassed by simulation
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-    // The comprehensive list of available recipes (used for display)
-    const PLACEHOLDER_RECIPES = [
-        {
-            name: "Lemon & Herb Baked Salmon with Asparagus",
-            ingredients: [
-                { item: "salmon fillet", qty: "2", note: "about 150g each" },
-                { item: "asparagus", qty: "1 bunch", note: "trimmed" },
-                { item: "lemon", qty: "1", note: "sliced and juiced" },
-                { item: "olive oil", qty: "2 tbsp", note: "" },
-                { item: "garlic cloves", qty: "2", note: "minced" },
-                { item: "dried oregano", qty: "1 tsp", note: "" }
-            ],
-            steps: [
-                "Preheat oven to 400°F (200°C).",
-                "Place salmon and asparagus on a baking sheet. Drizzle with olive oil, lemon juice, garlic, and oregano.",
-                "Season with salt and pepper, then top salmon with lemon slices.",
-                "Bake for 12–15 minutes, or until salmon is cooked through."
-            ]
-        },
-        {
-            name: "Mediterranean Quinoa Bowl with Feta",
-            ingredients: [
-                { item: "quinoa", qty: "1 cup", note: "cooked" },
-                { item: "cucumber", qty: "1", note: "diced" },
-                { item: "cherry tomatoes", qty: "1 cup", note: "halved" },
-                { item: "feta cheese", qty: "75 g", note: "crumbled" },
-                { item: "canned chickpeas", qty: "1/2 can", note: "drained and rinsed" },
-                { item: "red wine vinegar", qty: "2 tbsp", note: "" },
-                { item: "fresh parsley", qty: "1/4 cup", note: "chopped" }
-            ],
-            steps: [
-                "In a large bowl, combine the cooked quinoa, cucumber, tomatoes, chickpeas, and parsley.",
-                "Whisk together the olive oil, red wine vinegar, salt, and pepper for the dressing.",
-                "Pour dressing over the bowl ingredients and toss gently.",
-                "Sprinkle the crumbled feta cheese on top and serve."
-            ]
-        },
-        {
-            name: "Easy Hummus (from scratch or canned)",
-            ingredients: [
-                { item: "canned chickpeas", qty: "1 can (400g)", note: "drained (reserve liquid)" },
-                { item: "tahini", qty: "1/4 cup", note: "" },
-                { item: "lemon", qty: "1/2", note: "juiced" },
-                { item: "garlic clove", qty: "1", note: "" },
-                { item: "olive oil", qty: "2 tbsp", note: "extra virgin" }
-            ],
-            steps: [
-                "Combine chickpeas, tahini, lemon juice, and garlic in a food processor.",
-                "Blend until smooth, adding 1-2 tbsp of the reserved chickpea liquid (aquafaba) until desired consistency is reached.",
-                "Season with salt. Transfer to a bowl, drizzle with olive oil, and serve with bread or vegetables."
-            ]
-        },
-        {
-            name: "Greek Yogurt & Cucumber Tzatziki Dip",
-            ingredients: [
-                { item: "Greek yogurt", qty: "1 cup", note: "plain, full-fat" },
-                { item: "cucumber", qty: "1/2 medium", note: "grated and squeezed dry" },
-                { item: "garlic clove", qty: "1", note: "minced" },
-                { item: "fresh dill", qty: "1 tbsp", note: "chopped" },
-                { item: "olive oil", qty: "1 tsp", note: "" }
-            ],
-            steps: [
-                "Grate the cucumber and squeeze out as much water as possible using a paper towel or cheesecloth.",
-                "In a bowl, mix the Greek yogurt, grated cucumber, minced garlic, and chopped dill.",
-                "Season with salt and pepper. Stir in the olive oil.",
-                "Refrigerate for at least 30 minutes to allow the flavors to combine."
-            ]
-        },
-        {
-            name: "Simple Chicken Souvlaki Skewers",
-            ingredients: [
-                { item: "chicken breast", qty: "450 g", note: "cut into 1-inch cubes" },
-                { item: "olive oil", qty: "3 tbsp", note: "" },
-                { item: "lemon", qty: "1", note: "juiced" },
-                { item: "dried oregano", qty: "2 tsp", note: "" },
-                { item: "garlic cloves", qty: "2", note: "crushed" }
-            ],
-            steps: [
-                "Combine chicken cubes, olive oil, lemon juice, oregano, garlic, salt, and pepper in a bowl. Marinate for 30 minutes.",
-                "Thread chicken onto skewers.",
-                "Grill, bake, or pan-fry for 4-6 minutes per side, until chicken is cooked through and lightly browned.",
-                "Serve immediately with a squeeze of fresh lemon."
-            ]
-        },
-         {
-            name: "Feta and Spinach Egg Scramble (Strapatsada)",
-            ingredients: [
-                { item: "eggs", qty: "3", note: "" },
-                { item: "spinach", qty: "1 cup", note: "fresh or frozen, thawed" },
-                { item: "feta cheese", qty: "50 g", note: "crumbled" },
-                { item: "tomato", qty: "1/2", note: "diced" },
-                { item: "olive oil", qty: "1 tsp", note: "" }
-            ],
-            steps: [
-                "Heat olive oil in a pan. Sauté spinach and diced tomato until soft.",
-                "Whisk eggs with salt, pepper, and oregano (optional).",
-                "Pour eggs into the pan and cook, stirring occasionally, until almost set.",
-                "Fold in the crumbled feta cheese and cook until the eggs are to your desired consistency."
-            ]
+            if (response.ok) {
+                return response.json();
+            }
+
+            if (response.status === 429 || response.status >= 500) {
+                console.warn(`[Attempt ${i + 1}/${maxRetries}] Retrying due to status code: ${response.status}`);
+                throw new Error(`API error ${response.status}: Retrying...`);
+            } else {
+                const errorBody = await response.json();
+                console.error("Non-retriable API error details:", errorBody);
+                throw new Error(errorBody.error?.message || `API failed with status: ${response.status}`);
+            }
+
+        } catch (error) {
+            if (i === maxRetries - 1) {
+                console.error("Final API call failed:", error.message);
+                throw new Error(`Failed to fetch content after ${maxRetries} attempts. ${error.message}`);
+            }
+            const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-    ];
-    
-    // Custom recipe generation based on the input (simulated)
-    const ingredientString = fridgeItems.join(', ');
-    const customRecipeName = ingredientString.includes('chicken') && ingredientString.includes('rice') && ingredientString.includes('hummus') 
-        ? "Gemini's Fusion: Chicken, Hummus & Tomato Rice Bowl"
-        : "Gemini's Personalized Mediterranean Delight";
-        
-    const suggestedRecipe = {
-        name: customRecipeName,
+    }
+}
+
+/**
+ * Provides a guaranteed JSON recipe for simulation mode.
+ * @param {string} ingredients - User's input ingredients.
+ * @returns {object} A mock recipe object.
+ */
+function getSimulatedRecipe(ingredients) {
+    // FIX: Removed the extra ') after split(',
+    const list = ingredients.split(',').map(s => s.trim().toLowerCase());
+    const ingredientName = list.length > 0 ? list[0] : "Crab";
+    const dishName = `Simulated Mediterranean ${ingredientName} & Couscous Salad`;
+
+    return {
+        name: dishName,
         ingredients: [
-            { item: "Your Ingredients", qty: "", note: `Based on your list: ${ingredientString}` },
-            { item: "Cooked Chicken", qty: "1 cup", note: "" },
-            { item: "Basmati Rice", qty: "1 cup", note: "cooked" },
-            { item: "Tomato", qty: "1 large", note: "diced" },
-            { item: "Hummus", qty: "3 tbsp", note: "for topping" },
-            { item: "Olive Oil", qty: "1 tbsp", note: "" },
-            { item: "Lemon Juice", qty: "1 tsp", note: "" },
-            { item: "Dried Oregano", qty: "1/2 tsp", note: "" }
+            { item: ingredientName, qty: "200 g", note: "Prepared or Cooked" },
+            { item: "Couscous", qty: "1 cup", note: "Prepared according to package directions" },
+            { item: "Kalamata Olives", qty: "1/4 cup", note: "Halved" },
+            { item: "Cherry Tomatoes", qty: "1 cup", note: "Halved" },
+            { item: "Feta Cheese", qty: "50 g", note: "Crumbled" },
+            { item: "Olive Oil", qty: "3 tbsp", note: "Extra Virgin" },
+            { item: "Lemon Juice", qty: "1 tbsp", note: "Freshly squeezed" },
+            { item: "Fresh Mint", qty: "2 tbsp", note: "Chopped" }
         ],
         steps: [
-            "Fluff the cooked rice. In a bowl, toss the rice with diced tomato, olive oil, lemon juice, and oregano.",
-            "Warm the cooked chicken.",
-            "Spoon the rice mixture into a serving bowl. Top with warm chicken.",
-            "Garnish with a generous dollop of hummus and a sprinkle of salt/pepper. Serve warm."
+            "Prepare the couscous and let it cool completely.",
+            "In a large bowl, combine the cooked couscous, the prepared " + ingredientName + ", halved olives, cherry tomatoes, and mint.",
+            "Whisk together the olive oil and lemon juice to form a vinaigrette. Season with salt and pepper.",
+            "Pour the vinaigrette over the salad and toss gently to combine.",
+            "Serve immediately or chill for 30 minutes to allow the flavors to meld. Top with crumbled feta."
         ]
-    };
-
-    // Return the full list for display AND the custom suggestion
-    return { 
-        fullList: PLACEHOLDER_RECIPES, 
-        suggested: suggestedRecipe 
     };
 }
 
-/* ============================
-    UI code (Modified to handle both full list and suggestion)
-    ============================ */
-const findBtn = document.getElementById('find-btn');
-const clearBtn = document.getElementById('clear-btn');
-const inputEl = document.getElementById('ingredients-input');
-const resultsEl = document.getElementById('results');
-const noResultsEl = document.getElementById('no-results');
-const errorEl = document.getElementById('error-message');
-const loaderEl = document.getElementById('loader');
-const findBtnText = document.getElementById('find-btn-text');
-const modal = document.getElementById('modal');
-const modalTitle = document.getElementById('modal-title');
-const modalBody = document.getElementById('modal-body');
-const modalClose = document.getElementById('modal-close');
 
-findBtn.addEventListener('click', async () => {
-    const raw = inputEl.value;
-    const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+/**
+ * Generates the recipe using the Gemini API or Simulation.
+ * @param {string} ingredients - Comma-separated list of user ingredients.
+ */
+async function generateRecipe(ingredients) {
+    console.log("--- Starting Recipe Generation ---");
     
-    errorEl.classList.add('hidden');
-    resultsEl.innerHTML = '';
-    noResultsEl.classList.add('hidden');
+    if (USE_API_SIMULATION) {
+        console.warn("API Simulation is ACTIVE. Bypassing network call.");
+        // Delay to show the loading indicator
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const recipe = getSimulatedRecipe(ingredients);
+        console.log("Simulation finished. Recipe:", recipe);
+        return recipe;
+    }
 
-    if (list.length === 0) {
-        noResultsEl.textContent = "Please enter ingredients to see the suggested recipe and the full list.";
-        noResultsEl.classList.remove('hidden');
+    const userPrompt = `Create a unique, detailed recipe for a dish in Mediterranean cuisine using primarily these ingredients: ${ingredients}. Please ensure the recipe is healthy and flavorful.`;
+    const systemPrompt = "You are a world-class Mediterranean chef. Generate one complete recipe in the requested JSON structure. Include quantities, specific steps, and make sure the dish strongly fits the Mediterranean diet principles.";
+
+    const payload = {
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: recipeSchema
+        }
+    };
+
+    try {
+        const result = await fetchWithBackoff(payload);
+        
+        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!jsonText) {
+             console.error("Gemini Response was empty or malformed structure.", result);
+             throw new Error("No structured content received from the model.");
+        }
+        
+        let cleanedJsonText = jsonText.trim();
+        cleanedJsonText = cleanedJsonText.replace(/^\s*```(json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+        console.log("Raw JSON text:", jsonText);
+        
+        const recipeData = JSON.parse(cleanedJsonText);
+        return recipeData;
+
+    } catch (e) {
+        throw new Error(`Failed to generate or parse recipe. Parsing error: ${e.message}`);
+    }
+}
+
+/**
+ * Renders the generated recipe data to the UI.
+ * @param {object} recipe - The parsed recipe object.
+ */
+function renderRecipe(recipe) {
+    console.log("--- Starting Recipe Rendering ---");
+    resultsEl.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+
+    if (!recipe || !recipe.name || !Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) {
+        console.error("Invalid recipe structure received:", recipe);
+        errorEl.textContent = "The generated recipe structure was incomplete. Please try again or refine your ingredients.";
+        errorEl.classList.remove('hidden');
+        resultsEl.classList.add('hidden');
         return;
     }
 
+    recipeNameEl.textContent = escapeHtml(recipe.name || 'Generated Mediterranean Dish');
+
+    // Render Ingredients
+    ingredientsListEl.innerHTML = '';
+    recipe.ingredients.forEach(ing => {
+        const li = document.createElement('li');
+        li.className = 'flex items-start';
+        
+        const noteText = ing.note ? ` — ${escapeHtml(ing.note)}` : '';
+        
+        li.innerHTML = `<span class="text-green-500 mr-2">•</span> 
+                        <span class="font-bold">${escapeHtml(ing.qty)}</span> 
+                        <span class="ml-1">${escapeHtml(ing.item)}</span>
+                        <span class="text-gray-500 italic ml-2 text-sm">${noteText}</span>`;
+        ingredientsListEl.appendChild(li);
+    });
+
+    // Render Steps
+    stepsListEl.innerHTML = '';
+    recipe.steps.forEach((step, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="font-semibold text-blue-800 mr-2">${index + 1}.</span> ${escapeHtml(step)}`;
+        stepsListList.appendChild(li);
+    });
+    console.log("--- Recipe Rendering Complete ---");
+}
+
+// --- Event Handlers ---
+
+findBtn.addEventListener('click', async () => {
+    const ingredients = inputEl.value.trim();
+
+    resultsEl.classList.add('hidden');
+    errorEl.classList.add('hidden');
+
+    if (ingredients.length < 5) {
+        errorEl.textContent = "Please enter a list of ingredients (e.g., 'chicken, lemon, spinach').";
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    // Show loading state
     loaderEl.classList.remove('hidden');
     findBtnText.textContent = 'Generating...';
     findBtn.disabled = true;
 
     try {
-        const { fullList, suggested } = await generateRecipesWithGemini(list);
-        renderSuggestedRecipe(suggested);
-        renderFullList(fullList, [suggested]); // Pass suggested recipe so we can link the button
+        const recipe = await generateRecipe(ingredients);
+        renderRecipe(recipe);
     } catch (e) {
-        console.error("Gemini API simulation failed:", e);
+        errorEl.textContent = `Recipe generation failed: ${e.message}. (Check console for full debug info.)`;
         errorEl.classList.remove('hidden');
     } finally {
+        // Hide loading state
         loaderEl.classList.add('hidden');
-        findBtnText.textContent = 'Find Recipes with Gemini';
+        findBtnText.textContent = 'Generate Recipe with Gemini';
         findBtn.disabled = false;
     }
 });
 
 clearBtn.addEventListener('click', () => {
     inputEl.value = '';
-    resultsEl.innerHTML = '';
-    noResultsEl.classList.add('hidden');
+    resultsEl.classList.add('hidden');
     errorEl.classList.add('hidden');
 });
-
-// New function to render the custom suggested recipe (the first card)
-function renderSuggestedRecipe(recipe) {
-    const suggestedSection = document.createElement('div');
-    suggestedSection.className = 'bg-yellow-50 p-6 rounded-xl border border-yellow-200 mb-6';
-    suggestedSection.innerHTML = `
-        <h2 class="text-2xl font-bold text-yellow-800 mb-2 flex items-center">
-            ✨ Gemini's Custom Suggestion
-        </h2>
-        <div id="suggested-recipe-card" class="recipe-card bg-white p-5 rounded-xl border border-yellow-300">
-          <div class="flex justify-between items-start">
-            <div class="flex-1 min-w-0">
-              <h3 class="text-xl font-semibold text-gray-900 truncate">${escapeHtml(recipe.name)}</h3>
-              <p class="text-sm text-gray-600 mt-1 line-clamp-2">A unique meal designed for your fridge contents!</p>
-            </div>
-            <div class="ml-4 flex-shrink-0">
-              <button data-idx="0" class="view-suggested-btn text-sm font-medium text-blue-600 px-3 py-1 rounded-full border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors">
-                View Recipe
-              </button>
-            </div>
-          </div>
-        </div>
-        <p class="text-sm text-yellow-700 mt-4">Below is the complete list of all available Mediterranean recipes.</p>
-    `;
-    resultsEl.appendChild(suggestedSection);
-
-    // Attach click handler for the single suggested recipe
-    suggestedSection.querySelector('.view-suggested-btn').addEventListener('click', () => {
-        showModal(recipe);
-    });
-}
-
-// New function to render the comprehensive list of all recipes
-function renderFullList(recipes, prependedRecipes = []) {
-    recipes.forEach((r, idx) => {
-        const card = document.createElement('div');
-        card.className = 'recipe-card bg-white p-5 rounded-xl border border-gray-100 hover:border-green-300 transition-shadow';
-
-        const summary = `
-          <div class="flex justify-between items-start">
-            <div class="flex-1 min-w-0">
-              <h3 class="text-xl font-semibold text-gray-900 truncate">${escapeHtml(r.name)}</h3>
-              <p class="text-sm text-gray-600 mt-1 line-clamp-2">Key Ingredients: ${r.ingredients.map(i => escapeHtml(i.item)).slice(0, 4).join(', ')}...</p>
-            </div>
-            <div class="ml-4 flex-shrink-0">
-              <button data-idx="${idx + prependedRecipes.length}" class="view-btn text-sm font-medium text-blue-600 px-3 py-1 rounded-full border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors">
-                View Recipe
-              </button>
-            </div>
-          </div>
-        `;
-        card.innerHTML = summary;
-        resultsEl.appendChild(card);
-    });
-    
-    // Combine the prepended (suggested) recipe and the full list for modal lookup
-    const allRecipes = [...prependedRecipes, ...recipes];
-
-    // Attach click handlers for view buttons in the main list
-    document.querySelectorAll('.view-btn').forEach((btn, index) => {
-        btn.addEventListener('click', (e) => {
-            // Note: We use the index of the button itself, not the data-idx, since we already added the suggested recipe above.
-            // The index will correctly map to the item in the 'recipes' array passed to this function.
-            showModal(recipes[index]); 
-        });
-    });
-}
-
-modalClose.addEventListener('click', () => { 
-    modal.classList.add('hidden'); 
-    modal.style.display = 'none';
-});
-
-function showModal(recipe) {
-    modalTitle.textContent = recipe.name;
-    let html = '<h4 class="font-bold text-green-600 border-b pb-1 mb-2">Ingredients</h4><ul class="list-disc list-inside text-gray-700 space-y-1">';
-    recipe.ingredients.forEach(ing => {
-        const note = ing.note ? ` — ${ing.note}` : '';
-        html += `<li class="ml-4"><strong>${escapeHtml(ing.qty)}</strong> ${escapeHtml(ing.item)}<span class="text-gray-500 italic">${escapeHtml(note)}</span></li>`;
-    });
-    html += '</ul>';
-    html += '<h4 class="font-bold text-green-600 border-b pb-1 mt-6 mb-2">Instructions</h4><ol class="list-decimal list-inside text-gray-700 space-y-3">';
-    recipe.steps.forEach(step => {
-        html += `<li class="ml-4">${escapeHtml(step)}</li>`;
-    });
-    html += '</ol>';
-    modalBody.innerHTML = html;
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>"'`]/g, (s) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;', '`':'&#96;' })[s]);
-}
 </script>
+</body>
+</html>
