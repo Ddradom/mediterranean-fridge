@@ -11,7 +11,6 @@
     body { 
       font-family: 'Inter', sans-serif; 
       background-color: #f7f9fb; 
-      /* Subtle texture background for depth */
       background-image: linear-gradient(135deg, rgba(255,255,255,.2) 0%, rgba(240, 240, 240, .2) 100%);
       min-height: 100vh; 
     }
@@ -49,12 +48,12 @@
     .result-container {
       min-height: 400px;
     }
-    .simulation-badge {
+    .secure-badge {
         position: absolute;
         top: -16px;
         right: -16px;
         transform: rotate(15deg);
-        background-color: #f59e0b;
+        background-color: #3b82f6; /* Blue for secure */
         color: white;
         padding: 4px 12px;
         border-radius: 8px;
@@ -83,7 +82,7 @@
 
       <div class="flex gap-3 mt-4">
         <button id="find-btn" class="main-button text-white py-3 rounded-lg font-semibold transition duration-150 flex items-center justify-center flex-1">
-          <span id="find-btn-text">Generate Recipes with Gemini</span>
+          <span id="find-btn-text">Generate Recipes with Gemini (Secure)</span>
           <div id="loader" class="loader ml-3 hidden"></div>
         </button>
         <button id="clear-btn" class="px-6 py-3 rounded-lg border border-gray-300 bg-gray-100 hover:bg-gray-200 transition duration-150 font-medium">Clear</button>
@@ -92,7 +91,7 @@
       <p id="hint" class="mt-3 text-sm text-gray-500">
         Tip: Include staples like olive oil, salt, and pepper for complete instructions.
       </p>
-       <div id="mode-indicator" class="simulation-badge hidden">LIVE API MODE</div>
+       <div id="mode-indicator" class="secure-badge">NETLIFY FUNCTION PROXY</div>
     </section>
 
     <section id="results-section" class="result-container">
@@ -135,53 +134,8 @@
   </div>
 
 <script>
-// =========================================================================
-// CRITICAL FLAG: Setting this to FALSE to use the live Gemini API.
-const USE_API_SIMULATION = false; 
-// =========================================================================
-
-// --- API Configuration ---
-// The key has been updated based on your last input.
-const apiKey = "AIzaSyBjqrZOlAjhTvS7XAlwV9Y_OMokoVp8VU0"; 
-const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
-
-// --- JSON Schema for Structured Output (UPDATED to match model's detailed output) ---
-const singleRecipeSchema = {
-    type: "OBJECT",
-    properties: {
-        "title": { "type": "STRING", "description": "A creative, unique name for the dish." },
-        "description": { "type": "STRING", "description": "A brief description of the dish." },
-        "yield": { "type": "STRING", "description": "The number of servings or yield." },
-        "prepTime": { "type": "STRING" },
-        "cookTime": { "type": "STRING" },
-        "ingredients": {
-            "type": "ARRAY",
-            "description": "List of required ingredients with quantities.",
-            "items": {
-                "type": "OBJECT",
-                "properties": {
-                    "name": { "type": "STRING", "description": "Name of the ingredient." },
-                    "quantity": { "type": "STRING", "description": "The quantity (e.g., '1 cup', '2 tbsp')." },
-                    "unit": { "type": "STRING", "description": "The unit of measurement (e.g., 'cup', 'teaspoon')." }
-                },
-                "required": ["name", "quantity"]
-            }
-        },
-        "instructions": {
-            "type": "ARRAY",
-            "description": "Step-by-step cooking instructions.",
-            "items": { "type": "STRING" }
-        },
-        "dish_type": { "type": "STRING", "description": "Type of dish (e.g., Salad, Main Course, Dip)." }
-    },
-    required: ["title", "ingredients", "instructions"]
-};
-
-const recipeSchema = {
-    type: "ARRAY",
-    items: singleRecipeSchema,
-    description: "An array containing 3 to 4 distinct Mediterranean recipes."
-};
+// --- Configuration ---
+const NETLIFY_FUNCTION_ENDPOINT = "/.netlify/functions/generate-recipe";
 
 // --- DOM Elements ---
 const inputEl = document.getElementById('ingredients-input');
@@ -192,7 +146,6 @@ const findBtnText = document.getElementById('find-btn-text');
 const resultsEl = document.getElementById('results');
 const noResultsEl = document.getElementById('no-results');
 const errorEl = document.getElementById('error-message');
-const modeIndicator = document.getElementById('mode-indicator');
 
 // Modal Elements
 const modal = document.getElementById('modal');
@@ -200,15 +153,6 @@ const modalTitle = document.getElementById('modal-title');
 const modalIngredientsListEl = document.getElementById('modal-ingredients-list');
 const modalStepsListEl = document.getElementById('modal-steps-list');
 const modalCloseBtn = document.getElementById('modal-close');
-
-// Initialize indicator visibility
-if (USE_API_SIMULATION) {
-    modeIndicator.textContent = 'SIMULATION MODE ACTIVE';
-    modeIndicator.classList.remove('hidden');
-} else {
-    modeIndicator.textContent = 'LIVE API MODE';
-    modeIndicator.classList.remove('hidden');
-}
 
 
 // --- Utility Functions ---
@@ -219,186 +163,48 @@ function escapeHtml(str) {
 }
 
 /**
- * Executes the API call with exponential backoff.
- */
-async function fetchWithBackoff(payload, maxRetries = 5) {
-    // If running live, append API key to the URL
-    const url = USE_API_SIMULATION ? apiUrl : `${apiUrl}?key=${apiKey}`;
-
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.ok) {
-                return response.json();
-            }
-
-            if (response.status === 429 || response.status >= 500) {
-                console.warn(`[Attempt ${i + 1}/${maxRetries}] Retrying due to status code: ${response.status}`);
-                throw new Error(`API error ${response.status}: Retrying...`);
-            } else {
-                const errorBody = await response.json();
-                console.error("Non-retriable API error details:", errorBody);
-                throw new Error(errorBody.error?.message || `API failed with status: ${response.status}`);
-            }
-
-        } catch (error) {
-            if (i === maxRetries - 1) {
-                console.error("Final API call failed:", error.message);
-                throw new Error(`Failed to fetch content after ${maxRetries} attempts. ${error.message}`);
-            }
-            const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-    }
-}
-
-/**
- * Provides a guaranteed JSON recipe ARRAY for simulation mode.
- */
-function getSimulatedRecipes(ingredients) {
-    const list = ingredients.split(',').map(s => s.trim().toLowerCase());
-    const primaryIngredient = list.find(item => ['crab', 'chicken', 'tuna', 'shrimp'].includes(item)) || "Seafood";
-    
-    // NOTE: The simulated recipes must now match the new detailed structure (title, instructions, name, quantity)
-    return [
-        {
-            title: `${primaryIngredient} & Lemon Orzo Skillet (Simulated)`,
-            description: "A quick, warm pasta dish featuring seafood, lemon, and greens.",
-            yield: "2 servings",
-            prepTime: "5 minutes",
-            cookTime: "15 minutes",
-            dish_type: "Cooked Main Course",
-            ingredients: [
-                { name: primaryIngredient, quantity: "300 g", unit: "", note: "Cooked and flaked" },
-                { name: "Orzo Pasta", quantity: "1 cup", unit: "", note: "Cooked" },
-                { name: "Lemon", quantity: "1", unit: "", note: "Zested and juiced" },
-                { name: "Spinach", quantity: "2 cups", unit: "", note: "Fresh" },
-                { name: "Olive Oil", quantity: "2", unit: "tbsp", note: "" },
-                { name: "Garlic", quantity: "2", unit: "cloves", note: "Minced" }
-            ],
-            instructions: [
-                "Sauté garlic in olive oil in a large skillet.",
-                "Add cooked orzo, lemon zest, and lemon juice. Heat through.",
-                "Stir in the spinach until wilted, then fold in the prepared " + primaryIngredient + ".",
-                "Season with salt and pepper to taste and serve immediately."
-            ]
-        },
-        {
-            title: `Mediterranean ${primaryIngredient} & White Bean Salad (Simulated)`,
-            description: "A light and fresh protein salad.",
-            yield: "4 servings",
-            prepTime: "10 minutes",
-            cookTime: "0 minutes",
-            dish_type: "Salad",
-            ingredients: [
-                { name: primaryIngredient, quantity: "150 g", unit: "", note: "Flaked or diced" },
-                { name: "Canned White Beans", quantity: "1", unit: "can", note: "Drained and rinsed" },
-                { name: "Cherry Tomatoes", quantity: "1", unit: "cup", note: "Halved" },
-                { name: "Red Onion", quantity: "1/4", unit: "cup", note: "Thinly sliced" },
-                { name: "Feta Cheese", quantity: "50 g", unit: "", note: "Crumbled" },
-                { name: "Red Wine Vinegar", quantity: "2", unit: "tbsp", note: "" },
-                { name: "Dill", quantity: "1", unit: "tbsp", note: "Fresh, chopped" }
-            ],
-            instructions: [
-                "Combine all solid ingredients (beans, tomatoes, onion, " + primaryIngredient + ", and dill) in a bowl.",
-                "Whisk olive oil and red wine vinegar. Pour over salad and toss.",
-                "Top with crumbled feta cheese and serve chilled."
-            ]
-        },
-        {
-            title: "Lemony Hummus Dip (Simulated)",
-            description: "A homemade, bright citrus hummus.",
-            yield: "6 servings",
-            prepTime: "10 minutes",
-            cookTime: "0 minutes",
-            dish_type: "Dip / Mezze",
-            ingredients: [
-                { name: "Canned Chickpeas", quantity: "2", unit: "cans", note: "Drained, reserved liquid" },
-                { name: "Tahini", quantity: "1/2", unit: "cup", note: "" },
-                { name: "Lemon Juice", quantity: "3", unit: "tbsp", note: "Freshly squeezed" },
-                { name: "Garlic", quantity: "1", unit: "clove", note: "" },
-                { name: "Olive Oil", quantity: "2", unit: "tbsp", note: "for processing" }
-            ],
-            instructions: [
-                "Blend tahini, lemon juice, and garlic in a food processor until smooth.",
-                "Add chickpeas, salt, and cumin (optional). Process until smooth.",
-                "While blending, slowly drizzle in the olive oil and 2 tbsp of ice water until hummus is creamy.",
-                "Serve drizzled with olive oil and paprika."
-            ]
-        }
-    ];
-}
-
-
-/**
- * Generates the recipe using the Gemini API or Simulation.
+ * Calls the Netlify Function securely.
  */
 async function generateRecipes(ingredients) {
-    console.log("--- Starting Recipe Generation ---");
+    console.log("--- Calling Netlify Function Endpoint ---");
     
-    if (USE_API_SIMULATION) {
-        console.warn("API Simulation is ACTIVE. Bypassing network call.");
-        await new Promise(resolve => setTimeout(resolve, 800));
-        const recipes = getSimulatedRecipes(ingredients);
-        console.log("Simulation finished. Recipes:", recipes);
-        return recipes;
+    const response = await fetch(NETLIFY_FUNCTION_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredients: ingredients })
+    });
+
+    if (!response.ok) {
+        // Handle error from the serverless function itself
+        let errorData;
+        try {
+            errorData = await response.json();
+        } catch {
+            errorData = { error: "Unknown server error (Status: " + response.status + ")" };
+        }
+        console.error("Netlify Function Error:", errorData);
+        throw new Error(errorData.error || "Failed to communicate with the serverless function.");
     }
     
-    // Check for API Key presence when in live mode
-    if (!apiKey) {
-        throw new Error("API Key is missing. Please enter your Gemini API Key in the 'apiKey' variable within the script.");
+    // The Netlify function returns the clean JSON array directly
+    const recipeData = await response.json();
+    
+    // Final check for expected structure
+    if (!Array.isArray(recipeData) || recipeData.length === 0) {
+        console.error("Received data is not a valid array of recipes:", recipeData);
+        throw new Error("Received invalid recipe data structure from the server.");
     }
 
-    const userPrompt = `Create 3 to 4 distinct recipes for Mediterranean dishes using primarily these ingredients: ${ingredients}. Focus on variety (e.g., one salad, one cooked dish, one dip).`;
-    const systemPrompt = "You are a world-class Mediterranean chef. Generate an array of 3 to 4 complete recipes in the requested JSON structure. Include quantities, specific steps, and make sure the dishes strongly fit the Mediterranean diet principles.";
-
-    const payload = {
-        contents: [{ parts: [{ text: userPrompt }] }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: recipeSchema
-        }
-    };
-
-    try {
-        const result = await fetchWithBackoff(payload);
-        
-        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!jsonText) {
-             console.error("Gemini Response was empty or malformed structure.", result);
-             throw new Error("No structured content received from the model.");
-        }
-        
-        let cleanedJsonText = jsonText.trim();
-        cleanedJsonText = cleanedJsonText.replace(/^\s*```(json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-        console.log("Raw JSON text:", jsonText);
-        
-        const recipeData = JSON.parse(cleanedJsonText);
-        
-        // Ensure the result is an array
-        if (!Array.isArray(recipeData) || recipeData.length === 0) {
-            throw new Error("Model returned structured data, but it was not a non-empty array of recipes.");
-        }
-        return recipeData;
-
-    } catch (e) {
-        throw new Error(`Failed to generate or parse recipe list. Parsing error: ${e.message}`);
-    }
+    return recipeData;
 }
 
 /**
  * Renders the generated array of recipes to the UI.
- * @param {object[]} recipes - An array of parsed recipe objects.
+ * (Logic remains the same, ensuring compatibility with the new JSON structure)
  */
 function renderRecipes(recipes) {
     console.log("--- Starting Recipes Rendering ---");
-    resultsEl.innerHTML = ''; // Clear previous results
+    resultsEl.innerHTML = ''; 
     errorEl.classList.add('hidden');
     noResultsEl.classList.add('hidden');
 
@@ -409,14 +215,11 @@ function renderRecipes(recipes) {
     }
 
     recipes.forEach((recipe, index) => {
-        // Validation check for recipe structure
-        // We now check for 'title' and 'instructions' based on the new schema
         if (!recipe || !recipe.title || !Array.isArray(recipe.ingredients) || !Array.isArray(recipe.instructions)) {
             console.error(`Skipping recipe at index ${index} due to invalid structure:`, recipe);
             return;
         }
 
-        // Use 'name' from ingredient object for summary
         const ingredientsSummary = recipe.ingredients
             .map(i => escapeHtml(i.name)) 
             .slice(0, 4)
@@ -435,7 +238,6 @@ function renderRecipes(recipes) {
         resultsEl.appendChild(card);
     });
 
-    // Attach click handler to all 'View Full Recipe' buttons
     document.querySelectorAll('.view-recipe-btn').forEach(button => {
         button.addEventListener('click', (e) => {
             const index = parseInt(e.target.dataset.recipeIndex);
@@ -448,15 +250,27 @@ function renderRecipes(recipes) {
 
 /**
  * Displays the full recipe details in a modal.
- * @param {object} recipe - The recipe object to display.
  */
 function showModal(recipe) {
-    // We now use 'title' instead of 'name'
     modalTitle.textContent = escapeHtml(recipe.title);
     modalIngredientsListEl.innerHTML = '';
     modalStepsListEl.innerHTML = '';
 
-    // Render Ingredients (using name, quantity, and unit/note)
+    // Remove old details if present
+    const oldDetails = modal.querySelector('p.text-base.text-gray-500');
+    if (oldDetails) oldDetails.remove();
+
+    // Add extra details like yield and time to the title section of the modal
+    const details = document.createElement('p');
+    details.className = "text-base text-gray-500 mb-4";
+    details.innerHTML = `
+        Yield: ${escapeHtml(recipe.yield || 'N/A')} | 
+        Prep: ${escapeHtml(recipe.prepTime || 'N/A')} | 
+        Cook: ${escapeHtml(recipe.cookTime || 'N/A')}
+    `;
+    modalTitle.insertAdjacentElement('afterend', details);
+
+    // Render Ingredients
     recipe.ingredients.forEach(ing => {
         const qtyUnit = `${escapeHtml(ing.quantity)} ${escapeHtml(ing.unit || '')}`.trim();
         const noteText = ing.note ? ` — ${escapeHtml(ing.note)}` : '';
@@ -469,24 +283,13 @@ function showModal(recipe) {
         modalIngredientsListEl.appendChild(li);
     });
 
-    // Render Steps (using instructions array)
+    // Render Steps
     recipe.instructions.forEach((step, index) => {
         const li = document.createElement('li');
         li.innerHTML = `<span class="font-semibold text-blue-800 mr-2">${index + 1}.</span> ${escapeHtml(step)}`;
         modalStepsListEl.appendChild(li);
     });
     
-    // Add extra details like yield and time to the title section of the modal
-    const details = document.createElement('p');
-    details.className = "text-base text-gray-500 mb-4";
-    details.innerHTML = `
-        Yield: ${escapeHtml(recipe.yield || 'N/A')} | 
-        Prep: ${escapeHtml(recipe.prepTime || 'N/A')} | 
-        Cook: ${escapeHtml(recipe.cookTime || 'N/A')}
-    `;
-    modalTitle.insertAdjacentElement('afterend', details);
-
-
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
 }
@@ -495,9 +298,6 @@ function showModal(recipe) {
 modalCloseBtn.addEventListener('click', () => {
     modal.classList.add('hidden');
     modal.style.display = 'none';
-    // Remove temporary details element added to modal for next view
-    const details = modal.querySelector('p.text-base.text-gray-500');
-    if (details) details.remove();
 });
 
 
@@ -510,14 +310,6 @@ findBtn.addEventListener('click', async () => {
     errorEl.classList.add('hidden');
     noResultsEl.classList.add('hidden');
     
-    // Display API Key error immediately if missing and not in simulation
-    if (!USE_API_SIMULATION && (!apiKey || apiKey === "")) {
-        errorEl.textContent = "CRITICAL ERROR: Please provide your Gemini API Key in the script.";
-        errorEl.classList.remove('hidden');
-        return;
-    }
-
-
     if (ingredients.length < 5) {
         noResultsEl.textContent = "Please enter a list of ingredients (e.g., 'chicken, lemon, spinach').";
         noResultsEl.classList.remove('hidden');
@@ -538,7 +330,7 @@ findBtn.addEventListener('click', async () => {
     } finally {
         // Hide loading state
         loaderEl.classList.add('hidden');
-        findBtnText.textContent = 'Generate Recipes with Gemini';
+        findBtnText.textContent = 'Generate Recipes with Gemini (Secure)';
         findBtn.disabled = false;
     }
 });
@@ -553,9 +345,6 @@ clearBtn.addEventListener('click', () => {
         modal.classList.add('hidden');
         modal.style.display = 'none';
     }
-    // Remove details element from modal on clear
-    const details = modal.querySelector('p.text-base.text-gray-500');
-    if (details) details.remove();
 });
 
 // Initial state hint
