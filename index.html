@@ -12,6 +12,9 @@
     .recipe-card { box-shadow: 0 8px 18px rgba(0,0,0,0.06); }
     .custom-scrollbar::-webkit-scrollbar { width:8px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--color-primary); border-radius:10px; }
+    .loader { border-top-color: #3498db; -webkit-animation: spin 1s linear infinite; animation: spin 1s linear infinite; }
+    @-webkit-keyframes spin { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -30,8 +33,11 @@
         placeholder="e.g., canned chickpeas, lemon, olive oil, cucumber, parsley, feta"></textarea>
 
       <div class="flex gap-3 mt-4">
-        <button id="find-btn" class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700">Find Recipes</button>
-        <button id="clear-btn" class="px-4 py-3 rounded-lg border border-gray-200">Clear</button>
+        <button id="find-btn" class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors">
+          <span id="find-btn-text">Find Recipes with Gemini</span>
+          <div id="loader" class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 inline-block hidden"></div>
+        </button>
+        <button id="clear-btn" class="px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">Clear</button>
       </div>
 
       <p id="hint" class="mt-3 text-sm text-gray-500">Tip: include pantry items like olive oil, salt, pepper, lemon, garlic to enable full recipes.</p>
@@ -40,199 +46,222 @@
     <section id="results-section">
       <div id="results" class="grid grid-cols-1 gap-6"></div>
       <p id="no-results" class="text-center text-gray-500 mt-6 hidden">No recipes found. Try adding common items like olive oil, lemon, garlic.</p>
+      <p id="error-message" class="text-center text-red-500 mt-6 hidden font-semibold">An error occurred while fetching recipes. Please try again.</p>
     </section>
 
-    <footer class="mt-8 text-sm text-gray-500 text-center">This runs entirely in your browser — no login required.</footer>
+    <footer class="mt-8 text-sm text-gray-500 text-center">This code simulates an API call to Gemini for recipe generation.</footer>
   </div>
 
-  <!-- Modal -->
   <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
-    <div class="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl">
-      <h3 id="modal-title" class="text-xl font-bold text-gray-900 mb-2"></h3>
-      <div id="modal-body" class="text-gray-700"></div>
-      <div class="mt-4 text-right">
-        <button id="modal-close" class="px-4 py-2 rounded-lg border border-gray-200">Close</button>
+    <div class="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+      <h3 id="modal-title" class="text-2xl font-bold text-gray-900 mb-3"></h3>
+      <div id="modal-body" class="text-gray-700 text-base custom-scrollbar"></div>
+      <div class="mt-6 text-right">
+        <button id="modal-close" class="px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">Close</button>
       </div>
     </div>
   </div>
 
 <script>
 /* ============================
-   Recipe database (client-side)
-   Each recipe has: name, ingredients (item, qty, note), steps array
-   ============================ */
-const RECIPES = [
-  {
-    name: "Mediterranean Tomato & Feta Salad",
-    ingredients: [
-      { item: "tomato", qty: "2 medium", note: "ripe, chopped" },
-      { item: "cucumber", qty: "1/2", note: "sliced" },
-      { item: "feta cheese", qty: "75 g (1/3 cup)", note: "crumbled" },
-      { item: "red onion", qty: "1/4", note: "thinly sliced" },
-      { item: "olive oil", qty: "2 tbsp", note: "extra virgin" },
-      { item: "lemon", qty: "1", note: "juiced" },
-      { item: "fresh parsley", qty: "2 tbsp", note: "chopped" },
-      { item: "dried oregano", qty: "1/2 tsp", note: "optional" },
-      { item: "salt", qty: "to taste", note: "" },
-      { item: "black pepper", qty: "to taste", note: "" }
-    ],
-    steps: [
-      "Wash and chop the tomatoes into bite-sized pieces. Place in a mixing bowl.",
-      "Slice the cucumber and add to the bowl with the tomatoes.",
-      "Thinly slice the red onion and add to the vegetables.",
-      "Crumble the feta cheese over the salad.",
-      "In a small bowl, whisk together the olive oil, lemon juice, dried oregano (if using), salt, and black pepper.",
-      "Pour the dressing over the salad and toss gently to combine.",
-      "Sprinkle chopped fresh parsley on top and serve immediately (or chill 10–15 minutes to meld flavors)."
-    ]
-  },
-  {
-    name: "Lemon Garlic Chicken (Simple Roast)",
-    ingredients: [
-      { item: "chicken breasts (boneless)", qty: "2", note: "about 180–220 g each" },
-      { item: "olive oil", qty: "2 tbsp", note: "" },
-      { item: "lemon", qty: "1", note: "zest + juice" },
-      { item: "garlic cloves", qty: "3", note: "minced" },
-      { item: "dried oregano", qty: "1 tsp", note: "" },
-      { item: "salt", qty: "3/4 tsp", note: "" },
-      { item: "black pepper", qty: "1/2 tsp", note: "" }
-    ],
-    steps: [
-      "Preheat oven to 400°F (200°C).",
-      "In a bowl, mix olive oil, lemon zest and juice, minced garlic, oregano, salt, and pepper to make a marinade.",
-      "Place chicken breasts in a baking dish and pour the marinade over them. Let sit 10–20 minutes (or up to 2 hours in fridge).",
-      "Bake in the preheated oven for 20–28 minutes, or until internal temperature reaches 165°F (74°C).",
-      "Remove from oven, let rest 5 minutes, then slice and serve with pan juices spooned over."
-    ]
-  },
-  {
-    name: "Chickpea Mediterranean Bowl",
-    ingredients: [
-      { item: "canned chickpeas", qty: "1 can (400 g)", note: "drained and rinsed" },
-      { item: "olive oil", qty: "1 tbsp", note: "" },
-      { item: "tomato", qty: "1 medium", note: "chopped" },
-      { item: "spinach or arugula", qty: "2 cups", note: "fresh" },
-      { item: "lemon", qty: "1/2", note: "juiced" },
-      { item: "ground cumin", qty: "1/2 tsp", note: "" },
-      { item: "salt", qty: "to taste", note: "" },
-      { item: "black pepper", qty: "to taste", note: "" }
-    ],
-    steps: [
-      "Heat olive oil in a skillet over medium heat.",
-      "Add the chickpeas and sauté for 4–6 minutes until slightly crisp. Sprinkle cumin, salt and pepper during cooking.",
-      "Remove from heat and toss chickpeas with chopped tomato and fresh greens in a bowl.",
-      "Drizzle lemon juice and an extra splash of olive oil, toss gently and serve warm or at room temperature."
-    ]
-  },
-  {
-    name: "Greek Yogurt Parfait",
-    ingredients: [
-      { item: "Greek yogurt", qty: "1 cup (240 g)", note: "plain" },
-      { item: "honey", qty: "1 tbsp", note: "" },
-      { item: "walnuts", qty: "2 tbsp", note: "chopped" },
-      { item: "berries", qty: "1/2 cup", note: "fresh or frozen" }
-    ],
-    steps: [
-      "Spoon half the Greek yogurt into a bowl or glass.",
-      "Add half the berries, then a drizzle of honey, and half the chopped walnuts.",
-      "Repeat the layers with remaining yogurt, berries, honey, and walnuts.",
-      "Serve immediately."
-    ]
-  }
-];
+    SIMULATION: Replace with actual Gemini API call
+    The real implementation would use a backend to call the Gemini API,
+    asking for a JSON list of Mediterranean recipes based on the ingredients.
+    ============================ */
 
-/* ============================
-   Matching logic
-   - Lowercase, trim
-   - Count fuzzy matches: fridge item includes ingredient term or vice versa
-   - Rank by match ratio
-   ============================ */
-function findMatchingRecipes(fridgeItems) {
-  const items = fridgeItems.map(s => s.toLowerCase().trim()).filter(Boolean);
-  if (!items.length) return [];
+/**
+ * **SIMULATED** function to call a service that queries the Gemini API.
+ * @param {string[]} fridgeItems - List of ingredients from the input.
+ * @returns {Promise<Object[]>} A promise that resolves to an array of recipe objects.
+ */
+async function generateRecipesWithGemini(fridgeItems) {
+    // 1. **REAL IMPLEMENTATION:** This is where you would make an AJAX call to your backend.
+    // E.g., const response = await fetch('/api/gemini/recipes', { method: 'POST', body: JSON.stringify({ ingredients: fridgeItems, cuisine: 'Mediterranean' }) });
+    // const json = await response.json();
+    // return json.recipes; // Assuming the API returns a 'recipes' array
 
-  const scored = RECIPES.map(recipe => {
-    const required = recipe.ingredients.map(i => i.item.toLowerCase());
-    let matches = 0;
-    for (const it of items) {
-      for (const req of required) {
-        if (it.includes(req) || req.includes(it) || req.split(' ')[0] === it.split(' ')[0]) {
-          matches++;
-          break;
+    // 2. **SIMULATION:** Delay to mimic network latency and return a rich, generated recipe set.
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+    // LLM-generated Placeholder Recipes based on the prompt's request for a comprehensive list
+    const PLACEHOLDER_RECIPES = [
+        {
+            name: "Lentil & Vegetable Soup (Fakes)",
+            ingredients: [
+                { item: "brown lentils", qty: "1 cup", note: "dried" },
+                { item: "olive oil", qty: "4 tbsp", note: "extra virgin" },
+                { item: "onion", qty: "1 small", note: "finely chopped" },
+                { item: "carrot", qty: "1", note: "diced" },
+                { item: "garlic cloves", qty: "2", note: "minced" },
+                { item: "bay leaf", qty: "1", note: "" },
+                { item: "red wine vinegar", qty: "1 tbsp", note: "for serving" }
+            ],
+            steps: [
+                "Rinse lentils and place in a large pot with 6 cups of water and the bay leaf. Bring to a boil, then reduce heat and simmer.",
+                "In a separate skillet, sauté onion and carrot in olive oil until soft.",
+                "Add garlic to the skillet and cook for 1 minute. Add mixture to the simmering lentils.",
+                "Simmer for 45–60 minutes, or until lentils are tender. Season with salt and pepper.",
+                "Remove bay leaf before serving. Drizzle with red wine vinegar and extra olive oil."
+            ]
+        },
+        {
+            name: "Tzatziki Dip with Cucumber",
+            ingredients: [
+                { item: "Greek yogurt", qty: "1 cup", note: "full-fat, plain" },
+                { item: "cucumber", qty: "1/2 medium", note: "grated and squeezed dry" },
+                { item: "garlic clove", qty: "1", note: "minced" },
+                { item: "olive oil", qty: "1 tsp", note: "extra virgin" },
+                { item: "fresh dill or mint", qty: "1 tbsp", note: "chopped" },
+                { item: "lemon", qty: "1/2", note: "juiced" }
+            ],
+            steps: [
+                "Grate the cucumber, place it in a cloth or paper towel, and squeeze out all excess liquid.",
+                "In a bowl, combine the Greek yogurt, grated cucumber, minced garlic, olive oil, and lemon juice.",
+                "Stir in the chopped dill or mint. Season generously with salt and pepper.",
+                "Cover and refrigerate for at least 30 minutes to allow the flavors to meld. Serve chilled."
+            ]
+        },
+        {
+            name: "Spicy Harissa Shrimp Skewers",
+            ingredients: [
+                { item: "shrimp (prawns)", qty: "400 g", note: "peeled and deveined" },
+                { item: "harissa paste", qty: "2 tbsp", note: "" },
+                { item: "olive oil", qty: "1 tbsp", note: "" },
+                { item: "lemon", qty: "1/2", note: "juiced" },
+                { item: "salt", qty: "to taste", note: "" }
+            ],
+            steps: [
+                "If using wooden skewers, soak them in water for 30 minutes.",
+                "In a bowl, combine the shrimp, harissa paste, olive oil, and lemon juice. Toss to coat evenly.",
+                "Thread the shrimp onto the skewers (3-4 shrimp per skewer).",
+                "Grill or pan-fry for 2-3 minutes per side, until pink and cooked through.",
+                "Serve immediately with a sprinkle of fresh parsley (if available)."
+            ]
+        },
+        {
+            name: "Spanakopita-Inspired Spinach Scramble",
+            ingredients: [
+                { item: "spinach", qty: "2 cups", note: "fresh or frozen" },
+                { item: "eggs", qty: "3", note: "" },
+                { item: "feta cheese", qty: "50 g", note: "crumbled" },
+                { item: "olive oil", qty: "1 tsp", note: "" },
+                { item: "dried oregano", qty: "1/4 tsp", note: "" }
+            ],
+            steps: [
+                "If using fresh spinach, roughly chop it. If frozen, thaw and squeeze out excess water.",
+                "Heat olive oil in a non-stick pan over medium heat. Sauté the spinach and oregano until wilted.",
+                "Whisk the eggs in a bowl and season with salt and pepper.",
+                "Pour eggs into the pan over the spinach. As the eggs set, gently push the cooked egg from the edges toward the center, tilting the pan to allow uncooked egg to flow underneath.",
+                "Before the eggs are fully set, sprinkle the feta cheese over the top. Cook until desired doneness."
+            ]
         }
-      }
-    }
-    return { recipe, matches, total: required.length };
-  })
-  .filter(x => x.matches > 0)
-  .sort((a,b) => {
-    const aScore = a.matches / a.total;
-    const bScore = b.matches / b.total;
-    if (bScore !== aScore) return bScore - aScore;
-    return b.matches - a.matches;
-  })
-  .map(x => x.recipe);
+    ];
 
-  return scored;
+    // Simple matching to simulate relevance
+    const items = fridgeItems.map(s => s.toLowerCase().trim()).filter(Boolean);
+    if (!items.length) return [];
+    
+    // Filter recipes based on a single ingredient match for simplicity in this simulation
+    const matchedRecipes = PLACEHOLDER_RECIPES.filter(recipe => {
+        const required = recipe.ingredients.map(i => i.item.toLowerCase());
+        return items.some(it => required.some(req => req.includes(it) || it.includes(req) || req.split(' ')[0] === it.split(' ')[0]));
+    });
+
+    // If no match, return a couple of general Mediterranean options (simulating LLM generosity)
+    return matchedRecipes.length > 0 ? matchedRecipes : PLACEHOLDER_RECIPES.slice(0, 2);
 }
 
 /* ============================
-   UI code
-   ============================ */
+    UI code
+    ============================ */
 const findBtn = document.getElementById('find-btn');
 const clearBtn = document.getElementById('clear-btn');
 const inputEl = document.getElementById('ingredients-input');
 const resultsEl = document.getElementById('results');
 const noResultsEl = document.getElementById('no-results');
+const errorEl = document.getElementById('error-message');
+const loaderEl = document.getElementById('loader');
+const findBtnText = document.getElementById('find-btn-text');
 
-findBtn.addEventListener('click', () => {
-  const raw = inputEl.value;
-  const list = raw.split(',').map(s => s.trim()).filter(Boolean);
-  const matches = findMatchingRecipes(list);
-  renderResults(matches);
+findBtn.addEventListener('click', async () => {
+    const raw = inputEl.value;
+    const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+    
+    // Clear previous errors and results
+    errorEl.classList.add('hidden');
+    resultsEl.innerHTML = '';
+    noResultsEl.classList.add('hidden');
+
+    if (list.length === 0) {
+        noResultsEl.textContent = "Please enter at least one ingredient to find a recipe.";
+        noResultsEl.classList.remove('hidden');
+        return;
+    }
+
+    // Show loading state
+    loaderEl.classList.remove('hidden');
+    findBtnText.textContent = 'Generating...';
+    findBtn.disabled = true;
+
+    try {
+        const matches = await generateRecipesWithGemini(list);
+        renderResults(matches);
+    } catch (e) {
+        console.error("Gemini API simulation failed:", e);
+        errorEl.classList.remove('hidden');
+    } finally {
+        // Hide loading state
+        loaderEl.classList.add('hidden');
+        findBtnText.textContent = 'Find Recipes with Gemini';
+        findBtn.disabled = false;
+    }
 });
 
 clearBtn.addEventListener('click', () => {
-  inputEl.value = '';
-  resultsEl.innerHTML = '';
-  noResultsEl.classList.add('hidden');
+    inputEl.value = '';
+    resultsEl.innerHTML = '';
+    noResultsEl.classList.add('hidden');
+    errorEl.classList.add('hidden');
 });
 
 function renderResults(recipes) {
-  resultsEl.innerHTML = '';
-  if (!recipes.length) {
-    noResultsEl.classList.remove('hidden');
-    return;
-  }
-  noResultsEl.classList.add('hidden');
+    resultsEl.innerHTML = '';
+    if (!recipes || recipes.length === 0) {
+        noResultsEl.textContent = "No Mediterranean recipes found for your ingredients. Try adding common items like olive oil, lemon, garlic.";
+        noResultsEl.classList.remove('hidden');
+        return;
+    }
+    noResultsEl.classList.add('hidden');
 
-  recipes.forEach((r, idx) => {
-    const card = document.createElement('div');
-    card.className = 'recipe-card bg-white p-5 rounded-xl border border-gray-100';
+    recipes.forEach((r, idx) => {
+        const card = document.createElement('div');
+        card.className = 'recipe-card bg-white p-5 rounded-xl border border-gray-100 hover:border-green-300 transition-shadow';
 
-    // summary HTML
-    const summary = `
-      <div class="flex justify-between items-start">
-        <div>
-          <h3 class="text-xl font-semibold text-gray-900">${escapeHtml(r.name)}</h3>
-          <p class="text-sm text-gray-600 mt-1">Includes: ${r.ingredients.map(i => escapeHtml(i.item)).join(', ')}</p>
-        </div>
-        <div>
-          <button data-idx="${idx}" class="view-btn text-sm text-blue-600 hover:underline">View</button>
-        </div>
-      </div>
-    `;
-    card.innerHTML = summary;
-    resultsEl.appendChild(card);
-  });
-
-  // Attach click handlers for view buttons
-  document.querySelectorAll('.view-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const i = Number(e.currentTarget.dataset.idx);
-      showModal(recipes[i]);
+        // summary HTML
+        const summary = `
+          <div class="flex justify-between items-start">
+            <div class="flex-1 min-w-0">
+              <h3 class="text-xl font-semibold text-gray-900 truncate">${escapeHtml(r.name)}</h3>
+              <p class="text-sm text-gray-600 mt-1 line-clamp-2">Includes: ${r.ingredients.map(i => escapeHtml(i.item)).join(', ')}</p>
+            </div>
+            <div class="ml-4 flex-shrink-0">
+              <button data-idx="${idx}" class="view-btn text-sm font-medium text-blue-600 px-3 py-1 rounded-full border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors">
+                View Recipe
+              </button>
+            </div>
+          </div>
+        `;
+        card.innerHTML = summary;
+        resultsEl.appendChild(card);
     });
-  });
+
+    // Attach click handlers for view buttons
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const i = Number(e.currentTarget.dataset.idx);
+            showModal(recipes[i]);
+        });
+    });
 }
 
 /* Modal: show full recipe (ingredients + step-by-step) */
@@ -244,26 +273,27 @@ const modalClose = document.getElementById('modal-close');
 modalClose.addEventListener('click', () => { modal.classList.add('hidden'); });
 
 function showModal(recipe) {
-  modalTitle.textContent = recipe.name;
-  let html = '<h4 class="font-semibold text-gray-800 mt-2">Ingredients</h4><ul class="list-disc list-inside text-gray-700 mt-2">';
-  recipe.ingredients.forEach(ing => {
-    const note = ing.note ? ` — ${ing.note}` : '';
-    html += `<li><strong>${escapeHtml(ing.qty)}</strong> ${escapeHtml(ing.item)}${escapeHtml(note)}</li>`;
-  });
-  html += '</ul>';
-  html += '<h4 class="font-semibold text-gray-800 mt-4">Step-by-step Instructions</h4><ol class="list-decimal list-inside text-gray-700 mt-2">';
-  recipe.steps.forEach(step => {
-    html += `<li class="mb-2">${escapeHtml(step)}</li>`;
-  });
-  html += '</ol>';
-  modalBody.innerHTML = html;
-  modal.classList.remove('hidden');
+    modalTitle.textContent = recipe.name;
+    let html = '<h4 class="font-bold text-green-600 border-b pb-1 mb-2">Ingredients</h4><ul class="list-disc list-inside text-gray-700 space-y-1">';
+    recipe.ingredients.forEach(ing => {
+        const note = ing.note ? ` — ${ing.note}` : '';
+        html += `<li class="ml-4"><strong>${escapeHtml(ing.qty)}</strong> ${escapeHtml(ing.item)}<span class="text-gray-500 italic">${escapeHtml(note)}</span></li>`;
+    });
+    html += '</ul>';
+    html += '<h4 class="font-bold text-green-600 border-b pb-1 mt-6 mb-2">Instructions</h4><ol class="list-decimal list-inside text-gray-700 space-y-3">';
+    recipe.steps.forEach(step => {
+        html += `<li class="ml-4">${escapeHtml(step)}</li>`;
+    });
+    html += '</ol>';
+    modalBody.innerHTML = html;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex'; // Ensure modal is displayed correctly
 }
 
 /* Simple HTML escape */
 function escapeHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/[&<>"'`]/g, (s) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;', '`':'&#96;' })[s]);
+    if (!str) return '';
+    return String(str).replace(/[&<>"'`]/g, (s) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;', '`':'&#96;' })[s]);
 }
 </script>
 </body>
