@@ -197,7 +197,7 @@
         function listenForRecipes() {
             if (!isAuthReady || !db) return;
 
-            // Use the PUBLIC path for collaborative data: /artifacts/{appId}/public/data/{collectionName}
+            // Use the PUBLIC path for collaborative data: /artifacts/{appId}/public/data/recipes
             const collectionPath = `artifacts/${appId}/public/data/recipes`;
             const recipesRef = collection(db, collectionPath);
 
@@ -348,8 +348,10 @@
 
     <!-- Main Application Logic (Gemini API & Firestore Save) -->
     <script>
+        // 🚨 CRUCIAL: Replace 'YOUR_GEMINI_API_KEY_HERE' with your actual Gemini API Key from Google AI Studio. (Line 478)
+        const GEMINI_API_KEY = 'AIzaSyCb6MOGXRT81yOahVpCkbyYaKg4YtWeGXw'; 
         const GEMINI_MODEL = 'gemini-2.5-flash-preview-09-2025';
-        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=`;
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
         const MAX_RETRIES = 5;
 
         // Exponential backoff utility for API calls
@@ -385,6 +387,12 @@
             }
             if (!window.db || !document.getElementById('user-info').textContent.includes('User ID:')) {
                 errorMessage.textContent = 'Firebase is still loading. Please wait a moment.';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+            // Check if key is still the placeholder
+            if (GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
+                errorMessage.textContent = 'Error: Please replace the placeholder API key on Line 478 in the JavaScript code to enable recipe generation.';
                 errorMessage.classList.remove('hidden');
                 return;
             }
@@ -486,6 +494,4 @@
                 document.getElementById('error-message').classList.remove('hidden');
             }
         }
-    </script>
-</body>
-</html>
+  
