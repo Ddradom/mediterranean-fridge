@@ -92,7 +92,7 @@
       <p id="hint" class="mt-3 text-sm text-gray-500">
         Tip: Include staples like olive oil, salt, and pepper for complete instructions.
       </p>
-       <div id="mode-indicator" class="simulation-badge hidden">SIMULATION MODE ACTIVE</div>
+       <div id="mode-indicator" class="simulation-badge hidden">LIVE API MODE</div>
     </section>
 
     <section id="results-section" class="result-container">
@@ -136,40 +136,44 @@
 
 <script>
 // =========================================================================
-// CRITICAL FLAG: Set this to TRUE for guaranteed functional testing.
-// If set to TRUE, the app bypasses the network and loads a simulated recipe.
-const USE_API_SIMULATION = true; 
+// CRITICAL FLAG: Setting this to FALSE to use the live Gemini API.
+const USE_API_SIMULATION = false; 
 // =========================================================================
 
 // --- API Configuration ---
 const apiKey = ""; 
 const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
 
-// --- JSON Schema for Structured Output (Now requesting an ARRAY of recipes) ---
+// --- JSON Schema for Structured Output (UPDATED to match model's detailed output) ---
 const singleRecipeSchema = {
     type: "OBJECT",
     properties: {
-        "name": { "type": "STRING", "description": "A creative, unique name for the dish." },
+        "title": { "type": "STRING", "description": "A creative, unique name for the dish." },
+        "description": { "type": "STRING", "description": "A brief description of the dish." },
+        "yield": { "type": "STRING", "description": "The number of servings or yield." },
+        "prepTime": { "type": "STRING" },
+        "cookTime": { "type": "STRING" },
         "ingredients": {
             "type": "ARRAY",
             "description": "List of required ingredients with quantities.",
             "items": {
                 "type": "OBJECT",
                 "properties": {
-                    "item": { "type": "STRING", "description": "Name of the ingredient." },
-                    "qty": { "type": "STRING", "description": "The quantity (e.g., '1 cup', '2 tbsp')." },
-                    "note": { "type": "STRING", "description": "Preparation note (e.g., 'chopped', 'drained')." }
+                    "name": { "type": "STRING", "description": "Name of the ingredient." },
+                    "quantity": { "type": "STRING", "description": "The quantity (e.g., '1 cup', '2 tbsp')." },
+                    "unit": { "type": "STRING", "description": "The unit of measurement (e.g., 'cup', 'teaspoon')." }
                 },
-                "required": ["item", "qty"]
+                "required": ["name", "quantity"]
             }
         },
-        "steps": {
+        "instructions": {
             "type": "ARRAY",
             "description": "Step-by-step cooking instructions.",
             "items": { "type": "STRING" }
-        }
+        },
+        "dish_type": { "type": "STRING", "description": "Type of dish (e.g., Salad, Main Course, Dip)." }
     },
-    required: ["name", "ingredients", "steps"]
+    required: ["title", "ingredients", "instructions"]
 };
 
 const recipeSchema = {
@@ -198,9 +202,11 @@ const modalCloseBtn = document.getElementById('modal-close');
 
 // Initialize indicator visibility
 if (USE_API_SIMULATION) {
+    modeIndicator.textContent = 'SIMULATION MODE ACTIVE';
     modeIndicator.classList.remove('hidden');
 } else {
-    modeIndicator.classList.add('hidden');
+    modeIndicator.textContent = 'LIVE API MODE';
+    modeIndicator.classList.remove('hidden');
 }
 
 
@@ -254,18 +260,24 @@ function getSimulatedRecipes(ingredients) {
     const list = ingredients.split(',').map(s => s.trim().toLowerCase());
     const primaryIngredient = list.find(item => ['crab', 'chicken', 'tuna', 'shrimp'].includes(item)) || "Seafood";
     
+    // NOTE: The simulated recipes must now match the new detailed structure (title, instructions, name, quantity)
     return [
         {
-            name: `${primaryIngredient} & Lemon Orzo Skillet`,
+            title: `${primaryIngredient} & Lemon Orzo Skillet (Simulated)`,
+            description: "A quick, warm pasta dish featuring seafood, lemon, and greens.",
+            yield: "2 servings",
+            prepTime: "5 minutes",
+            cookTime: "15 minutes",
+            dish_type: "Cooked Main Course",
             ingredients: [
-                { item: primaryIngredient, qty: "300 g", note: "Cooked and flaked" },
-                { item: "Orzo Pasta", qty: "1 cup", note: "Cooked" },
-                { item: "Lemon", qty: "1", note: "Zested and juiced" },
-                { item: "Spinach", qty: "2 cups", note: "Fresh" },
-                { item: "Olive Oil", qty: "2 tbsp", note: "" },
-                { item: "Garlic", qty: "2 cloves", note: "Minced" }
+                { name: primaryIngredient, quantity: "300 g", unit: "", note: "Cooked and flaked" },
+                { name: "Orzo Pasta", quantity: "1 cup", unit: "", note: "Cooked" },
+                { name: "Lemon", quantity: "1", unit: "", note: "Zested and juiced" },
+                { name: "Spinach", quantity: "2 cups", unit: "", note: "Fresh" },
+                { name: "Olive Oil", quantity: "2", unit: "tbsp", note: "" },
+                { name: "Garlic", quantity: "2", unit: "cloves", note: "Minced" }
             ],
-            steps: [
+            instructions: [
                 "Sauté garlic in olive oil in a large skillet.",
                 "Add cooked orzo, lemon zest, and lemon juice. Heat through.",
                 "Stir in the spinach until wilted, then fold in the prepared " + primaryIngredient + ".",
@@ -273,35 +285,45 @@ function getSimulatedRecipes(ingredients) {
             ]
         },
         {
-            name: `Mediterranean ${primaryIngredient} & White Bean Salad`,
+            title: `Mediterranean ${primaryIngredient} & White Bean Salad (Simulated)`,
+            description: "A light and fresh protein salad.",
+            yield: "4 servings",
+            prepTime: "10 minutes",
+            cookTime: "0 minutes",
+            dish_type: "Salad",
             ingredients: [
-                { item: primaryIngredient, qty: "150 g", note: "Flaked or diced" },
-                { item: "Canned White Beans", qty: "1 can", note: "Drained and rinsed" },
-                { item: "Cherry Tomatoes", qty: "1 cup", note: "Halved" },
-                { item: "Red Onion", qty: "1/4", note: "Thinly sliced" },
-                { item: "Feta Cheese", qty: "50 g", note: "Crumbled" },
-                { item: "Red Wine Vinegar", qty: "2 tbsp", note: "" },
-                { item: "Dill", qty: "1 tbsp", note: "Fresh, chopped" }
+                { name: primaryIngredient, quantity: "150 g", unit: "", note: "Flaked or diced" },
+                { name: "Canned White Beans", quantity: "1", unit: "can", note: "Drained and rinsed" },
+                { name: "Cherry Tomatoes", quantity: "1", unit: "cup", note: "Halved" },
+                { name: "Red Onion", quantity: "1/4", unit: "cup", note: "Thinly sliced" },
+                { name: "Feta Cheese", quantity: "50 g", unit: "", note: "Crumbled" },
+                { name: "Red Wine Vinegar", quantity: "2", unit: "tbsp", note: "" },
+                { name: "Dill", quantity: "1", unit: "tbsp", note: "Fresh, chopped" }
             ],
-            steps: [
+            instructions: [
                 "Combine all solid ingredients (beans, tomatoes, onion, " + primaryIngredient + ", and dill) in a bowl.",
                 "Whisk olive oil and red wine vinegar. Pour over salad and toss.",
                 "Top with crumbled feta cheese and serve chilled."
             ]
         },
         {
-            name: "Lemony Hummus Dip (Large Batch)",
+            title: "Lemony Hummus Dip (Simulated)",
+            description: "A homemade, bright citrus hummus.",
+            yield: "6 servings",
+            prepTime: "10 minutes",
+            cookTime: "0 minutes",
+            dish_type: "Dip / Mezze",
             ingredients: [
-                { item: "Canned Chickpeas", qty: "2 cans", note: "Drained, reserved liquid" },
-                { item: "Tahini", qty: "1/2 cup", note: "" },
-                { item: "Lemon Juice", qty: "3 tbsp", note: "Freshly squeezed" },
-                { item: "Garlic", qty: "1 clove", note: "" },
-                { item: "Ice Water", qty: "3 tbsp", note: "Or reserved chickpea liquid" }
+                { name: "Canned Chickpeas", quantity: "2", unit: "cans", note: "Drained, reserved liquid" },
+                { name: "Tahini", quantity: "1/2", unit: "cup", note: "" },
+                { name: "Lemon Juice", quantity: "3", unit: "tbsp", note: "Freshly squeezed" },
+                { name: "Garlic", quantity: "1", unit: "clove", note: "" },
+                { name: "Olive Oil", quantity: "2", unit: "tbsp", note: "for processing" }
             ],
-            steps: [
+            instructions: [
                 "Blend tahini, lemon juice, and garlic in a food processor until smooth.",
                 "Add chickpeas, salt, and cumin (optional). Process until smooth.",
-                "While blending, slowly drizzle in the ice water or reserved liquid until hummus is creamy.",
+                "While blending, slowly drizzle in the olive oil and 2 tbsp of ice water until hummus is creamy.",
                 "Serve drizzled with olive oil and paprika."
             ]
         }
@@ -379,21 +401,24 @@ function renderRecipes(recipes) {
 
     recipes.forEach((recipe, index) => {
         // Validation check for recipe structure
-        if (!recipe || !recipe.name || !Array.isArray(recipe.ingredients)) {
+        // We now check for 'title' and 'instructions' based on the new schema
+        if (!recipe || !recipe.title || !Array.isArray(recipe.ingredients) || !Array.isArray(recipe.instructions)) {
             console.error(`Skipping recipe at index ${index} due to invalid structure:`, recipe);
             return;
         }
 
+        // Use 'name' from ingredient object for summary
         const ingredientsSummary = recipe.ingredients
-            .map(i => escapeHtml(i.item))
+            .map(i => escapeHtml(i.name)) 
             .slice(0, 4)
             .join(', ');
 
         const card = document.createElement('div');
         card.className = 'recipe-card bg-white p-6 rounded-xl cursor-pointer';
         card.innerHTML = `
-            <h3 class="text-xl font-bold text-gray-800 mb-2">${escapeHtml(recipe.name)}</h3>
-            <p class="text-sm text-gray-600 mb-4">Includes: ${ingredientsSummary}...</p>
+            <h3 class="text-xl font-bold text-gray-800 mb-2">${escapeHtml(recipe.title)}</h3>
+            <p class="text-sm text-gray-600 mb-2 italic">${escapeHtml(recipe.description || 'Mediterranean Dish')}</p>
+            <p class="text-sm text-gray-600 mb-4">Key Ingredients: ${ingredientsSummary}...</p>
             <button data-recipe-index="${index}" class="view-recipe-btn text-blue-600 hover:text-blue-800 font-semibold text-sm">
                 View Full Recipe »
             </button>
@@ -417,27 +442,41 @@ function renderRecipes(recipes) {
  * @param {object} recipe - The recipe object to display.
  */
 function showModal(recipe) {
-    modalTitle.textContent = escapeHtml(recipe.name);
+    // We now use 'title' instead of 'name'
+    modalTitle.textContent = escapeHtml(recipe.title);
     modalIngredientsListEl.innerHTML = '';
     modalStepsListEl.innerHTML = '';
 
-    // Render Ingredients
+    // Render Ingredients (using name, quantity, and unit/note)
     recipe.ingredients.forEach(ing => {
-        const li = document.createElement('li');
+        const qtyUnit = `${escapeHtml(ing.quantity)} ${escapeHtml(ing.unit || '')}`.trim();
         const noteText = ing.note ? ` — ${escapeHtml(ing.note)}` : '';
+        
+        const li = document.createElement('li');
         li.innerHTML = `<span class="text-green-500 mr-2">•</span> 
-                        <span class="font-bold">${escapeHtml(ing.qty)}</span> 
-                        <span class="ml-1">${escapeHtml(ing.item)}</span>
+                        <span class="font-bold">${qtyUnit}</span> 
+                        <span class="ml-1">${escapeHtml(ing.name)}</span>
                         <span class="text-gray-500 italic ml-2 text-sm">${noteText}</span>`;
         modalIngredientsListEl.appendChild(li);
     });
 
-    // Render Steps
-    recipe.steps.forEach((step, index) => {
+    // Render Steps (using instructions array)
+    recipe.instructions.forEach((step, index) => {
         const li = document.createElement('li');
         li.innerHTML = `<span class="font-semibold text-blue-800 mr-2">${index + 1}.</span> ${escapeHtml(step)}`;
         modalStepsListEl.appendChild(li);
     });
+    
+    // Add extra details like yield and time to the title section of the modal
+    const details = document.createElement('p');
+    details.className = "text-base text-gray-500 mb-4";
+    details.innerHTML = `
+        Yield: ${escapeHtml(recipe.yield || 'N/A')} | 
+        Prep: ${escapeHtml(recipe.prepTime || 'N/A')} | 
+        Cook: ${escapeHtml(recipe.cookTime || 'N/A')}
+    `;
+    modalTitle.insertAdjacentElement('afterend', details);
+
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
@@ -447,6 +486,9 @@ function showModal(recipe) {
 modalCloseBtn.addEventListener('click', () => {
     modal.classList.add('hidden');
     modal.style.display = 'none';
+    // Remove temporary details element added to modal for next view
+    const details = modal.querySelector('p.text-base.text-gray-500');
+    if (details) details.remove();
 });
 
 
@@ -494,6 +536,9 @@ clearBtn.addEventListener('click', () => {
         modal.classList.add('hidden');
         modal.style.display = 'none';
     }
+    // Remove details element from modal on clear
+    const details = modal.querySelector('p.text-base.text-gray-500');
+    if (details) details.remove();
 });
 
 // Initial state hint
